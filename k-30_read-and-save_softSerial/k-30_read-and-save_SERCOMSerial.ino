@@ -12,22 +12,31 @@
 
 #include <SPI.h>
 #include <SD.h>
-#include <Adafruit_GPS.h>
+#include "wiring_private.h" // pinPeripheral() function and Uart Serial2
 
-
-// Set the pins used
-#define chipSelect 4
-
+// SD card settings
+#define chipSelect 4 
 File myFile;
+
+// K30 communications
 byte readCO2[] = {0xFE, 0X44, 0X00, 0X08, 0X02, 0X9F, 0X25}; //Command packet to read Co2 (see app note)
 byte response[] = {0,0,0,0,0,0,0}; //create an array to store the response
 
 //multiplier for value. default is 1. set to 3 for K-30 3% and 10 for K-33 ICB
 int valMultiplier = 1;
 
+// Add a second hardware UART
+// https://learn.adafruit.com/using-atsamd21-sercom-to-add-more-spi-i2c-serial-ports/creating-a-new-serial
+Uart Serial2 (&sercom1, 11, 10, SERCOM_RX_PAD_0, UART_TX_PAD_2);
+void SERCOM1_Handler()
+{
+  Serial2.IrqHandler();
+}
+
+
 void setup() {
   Serial.begin(9600); //Opens the main serial port to communicate with the computer
-  Serial1.begin(9600); //Opens the virtual serial port with a baud of 9600
+  Serial2.begin(9600); //Opens the virtual serial port with a baud of 9600
   
   delay(2000); // give serial monitor time to open and establish comms.
   Serial.println(" Demo of AN-126 Software Serial and K-40 Sensor");
@@ -42,6 +51,10 @@ void setup() {
     while (1);
   }
   Serial.println("card initialized.");
+
+  // Assign pins 10 & 11 SERCOM functionality for 2nd UART
+  pinPeripheral(10, PIO_SERCOM);
+  pinPeripheral(11, PIO_SERCOM);
 
 }
 
@@ -74,20 +87,20 @@ void loop() {
 }
 
 void sendRequest(byte packet[]){
-  while(!Serial1.available()) { //keep sending request until we start to get a response  
+  while(!Serial2.available()) { //keep sending request until we start to get a response  
 //    Serial.println("waiting for Software.serial port availability");
-    Serial1.write(readCO2,7);
+    Serial2.write(readCO2,7);
     delay(50); 
   }
   
   int timeout=0; //set a timeout counter
   
-  while(Serial1.available() < 7 ){ //Wait to get a 7 byte response
+  while(Serial2.available() < 7 ){ //Wait to get a 7 byte response
     timeout++;
     
     if(timeout > 10){ //if it takes too long there was probably an error
-      while(Serial1.available()) //flush whatever we have
-      Serial1.read();
+      while(Serial2.available()) //flush whatever we have
+      Serial2.read();
       break; //exit and try again
     }
     
@@ -95,7 +108,7 @@ void sendRequest(byte packet[]){
   }
   
   for (int i=0; i < 7; i++)  {
-    response[i] = Serial1.read();
+    response[i] = Serial2.read();
   }
 }
 
