@@ -8,6 +8,8 @@
  
  Modified by Phil Bresnahan to include datalogging and GPS
  UNCW
+
+ GPS and SD code, as well as modification to enable a second hardware serial line, comes from Adafruit
 */
 
 #include <SPI.h>
@@ -19,13 +21,21 @@
 File myFile;
 char filename[] = "YYMMDD00.CSV"; // template filename (year, month, day, 00–99 file number for that day)
 int filenum = 0; // start at zero and increment by one if file exists
+bool ledState = false;
 
 // K30 communications
 byte readCO2[] = {0xFE, 0X44, 0X00, 0X08, 0X02, 0X9F, 0X25}; //Command packet to read Co2 (see app note)
 byte response[] = {0,0,0,0,0,0,0}; //create an array to store the response
+int valMultiplier = 1; //multiplier for value. default is 1. set to 3 for K-30 3% and 10 for K-33 ICB
 
-//multiplier for value. default is 1. set to 3 for K-30 3% and 10 for K-33 ICB
-int valMultiplier = 1;
+// GPS
+#include <Adafruit_GPS.h>
+
+// what's the name of the hardware serial port?
+#define GPSSerial Serial1
+
+// Connect to the GPS on the hardware port
+Adafruit_GPS GPS(&GPSSerial);
 
 // Add a second hardware UART
 // https://learn.adafruit.com/using-atsamd21-sercom-to-add-more-spi-i2c-serial-ports/creating-a-new-serial
@@ -39,10 +49,24 @@ void SERCOM1_Handler()
 void setup() {
   Serial.begin(9600); //Opens the main serial port to communicate with the computer
   Serial2.begin(9600); //Opens the virtual serial port with a baud of 9600
+  pinMode(LED_BUILTIN, OUTPUT);
   
   delay(2000); // give serial monitor time to open and establish comms.
   Serial.println(" Demo of AN-126 Software Serial and K-40 Sensor");
 
+  // Set up GPS
+  GPS.begin(9600);
+  // uncomment this line to turn on RMC (recommended minimum) and GGA (fix data) including altitude
+  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+  // uncomment this line to turn on only the "minimum recommended" data
+  //GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY);
+  // For parsing data, we don't suggest using anything but either RMC only or RMC+GGA since
+  // the parser doesn't care about other sentences at this time
+  // Set the update rate
+  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ); // 1 Hz update rate
+  // For the parsing code to work nicely and have time to sort thru the data, and
+  // print it out we don't suggest using anything higher than 1 Hz
+  
   // Start SD stuff
   Serial.print("Initializing SD card...");
 
@@ -54,11 +78,34 @@ void setup() {
   }
   Serial.println("card initialized.");
 
-  // Check for existence of filename with current filenum
+  // spin and blink fast until fix is acquired; no need to collect other data without GPS
+  char c = GPS.read();
   
+  while(!GPS.fix) {
+    ledState = !ledState;
+    digitalWrite(LED_BUILTIN, ledState);   // turn the LED on (HIGH is the voltage level)
+    Serial.println("No fix");
+    delay(500); 
+    
+    GPS.read();
+      // if a sentence is received, we can check the checksum, parse it...
+    if (GPS.newNMEAreceived()) {
+      // a tricky thing here is if we print the NMEA sentence, or data
+      // we end up not listening and catching other sentences!
+      // so be very wary if using OUTPUT_ALLDATA and trying to print out data
+      Serial.print(GPS.lastNMEA()); // this also sets the newNMEAreceived() flag to false
+      if (!GPS.parse(GPS.lastNMEA())) // this also sets the newNMEAreceived() flag to false
+        return; // we can fail to parse a sentence in which case we should just wait for another
+    }
+  }
+
+  // Get year, month, and day for filename
+  sprintf(filename, "%02d%02d%02d%02d.csv", GPS.year, GPS.month, GPS.day, filenum);
+  
+  // Check for existence of filename with current filenum
   while (SD.exists(filename)) {
     filenum++;
-    sprintf(filename, "YYMMDD%02d.csv", filenum);
+    sprintf(filename, "%02d%02d%02d%02d.csv", GPS.year, GPS.month, GPS.day, filenum);
   }
 
   
@@ -69,30 +116,34 @@ void setup() {
 }
 
 void loop() {
-  Serial.print("Co2 ppm = ");
+  // Blink to let us know you're alive
+  ledState = !ledState;
+  digitalWrite(LED_BUILTIN, ledState);   // turn the LED on (HIGH is the voltage level)
 
-  // Poll sensor: UART K-30 comms
-  sendRequest(readCO2);
-  unsigned long valCO2 = getValue(response);
-  Serial.print(valCO2);
-  Serial.print(", seconds elapsed = ");
-  Serial.println(millis()/1000);
-
-  // Create filename
-  // Open the file: SPI SD comms
-  File dataFile = SD.open(filename, FILE_WRITE);
-    
-  // if the file is available, write to it:
-  if (dataFile) {
-    dataFile.print(millis()/1000);
-    dataFile.print(",");
-    dataFile.println(valCO2);
-    dataFile.close();
-  }
-  // if the file isn't open, pop up an error:
-  else {
-    Serial.println("error opening datalog.txt");
-  }
+//  Serial.print("Co2 ppm = ");
+//
+//  // Poll sensor: UART K-30 comms
+//  sendRequest(readCO2);
+//  unsigned long valCO2 = getValue(response);
+//  Serial.print(valCO2);
+//  Serial.print(", seconds elapsed = ");
+//  Serial.println(millis()/1000);
+//
+//  // Create filename
+//  // Open the file: SPI SD comms
+//  File dataFile = SD.open(filename, FILE_WRITE);
+//    
+//  // if the file is available, write to it:
+//  if (dataFile) {
+//    dataFile.print(millis()/1000);
+//    dataFile.print(",");
+//    dataFile.println(valCO2);
+//    dataFile.close();
+//  }
+//  // if the file isn't open, pop up an error:
+//  else {
+//    Serial.println("error opening datalog.txt");
+//  }
 
   delay(2000);
 }

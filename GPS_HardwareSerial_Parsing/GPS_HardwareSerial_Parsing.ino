@@ -28,11 +28,14 @@ Adafruit_GPS GPS(&GPSSerial);
 
 uint32_t timer = millis();
 
+bool ledState = false;
 
 void setup()
 {
+  pinMode(LED_BUILTIN, OUTPUT);
+  
   //while (!Serial);  // uncomment to have the sketch wait until Serial is ready
-
+  
   // connect at 115200 so we can read the GPS fast enough and echo without dropping chars
   // also spit it out
   Serial.begin(115200);
@@ -100,6 +103,10 @@ void loop() // run over and over again
     Serial.print("Fix: "); Serial.print((int)GPS.fix);
     Serial.print(" quality: "); Serial.println((int)GPS.fixquality);
     if (GPS.fix) {
+      // Blink to let us know you're alive
+      ledState = !ledState;
+      digitalWrite(LED_BUILTIN, ledState);   // turn the LED on (HIGH is the voltage level)
+      
       Serial.print("Location: ");
       Serial.print(GPS.latitude, 4); Serial.print(GPS.lat);
       Serial.print(", ");
