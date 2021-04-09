@@ -138,25 +138,25 @@ void loop() {
       if(!filenameCreated){
         // Get year, month, and day for filename
         int filenum = 0; // start at zero and increment by one if file exists
-        sprintf(filename, "%02i%02i%02i%02d.csv", GPS.year, GPS.month, GPS.day, filenum); 
+        sprintf(filename, "%02d%02d%02d%02d.csv", GPS.year, GPS.month, GPS.day, filenum); 
         
         // Check for existence of filename with current filenum
         while (SD.exists(filename)) {
           filenum++;
-          sprintf(filename, "%02i%02i%02i%02d.csv", GPS.year, GPS.month, GPS.day, filenum); 
+          sprintf(filename, "%02d%02d%02d%02d.csv", GPS.year, GPS.month, GPS.day, filenum); 
         }
         filenameCreated = true;
       }
       
     }
 
-    Serial.print(filename);
-    Serial.println(" Co2 ppm = ");
+    Serial.println(filename);
+    Serial.print(" Co2 ppm = ");
   
     // Poll sensor: UART K-30 comms
-  //  sendRequest(readCO2);
-  //  unsigned long valCO2 = getValue(response);
-  //  Serial.print(valCO2);
+    sendRequest(readCO2);
+    unsigned long valCO2 = getValue(response);
+    Serial.print(valCO2);
     Serial.print(", seconds elapsed = ");
     Serial.println(millis()/1000);
     
@@ -168,7 +168,7 @@ void loop() {
     if (dataFile) {
       dataFile.print(millis()/1000);
       dataFile.print(",");
-  //    dataFile.println(valCO2);
+      dataFile.println(valCO2);
       dataFile.close();
     }
     // if the file isn't open, pop up an error:
