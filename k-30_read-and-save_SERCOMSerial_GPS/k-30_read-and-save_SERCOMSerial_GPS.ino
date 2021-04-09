@@ -20,8 +20,8 @@
 #define chipSelect 4 
 File myFile;
 char filename[] = "YYMMDD00.csv"; // template filename (year, month, day, 00–99 file number for that day)
-int filenum = 0; // start at zero and increment by one if file exists
 bool ledState = false;
+bool filenameCreated = false;
 
 // K30 communications
 byte readCO2[] = {0xFE, 0X44, 0X00, 0X08, 0X02, 0X9F, 0X25}; //Command packet to read Co2 (see app note)
@@ -79,41 +79,7 @@ void setup() {
     while (1);
   }
   Serial.println("card initialized.");
-
-  // spin and blink fast until fix is acquired; no need to collect other data without GPS
-  char c = GPS.read();
   
-  while(!GPS.fix) {
-    // read data from the GPS
-    char c = GPS.read();
-    // if a sentence is received, we can check the checksum, parse it...
-    if (GPS.newNMEAreceived()) {
-      // a tricky thing here is if we print the NMEA sentence, or data
-      // we end up not listening and catching other sentences!
-      // so be very wary if using OUTPUT_ALLDATA and trying to print out data
-      Serial.print(GPS.lastNMEA()); // this also sets the newNMEAreceived() flag to false
-      if (!GPS.parse(GPS.lastNMEA())) // this also sets the newNMEAreceived() flag to false
-        return; // we can fail to parse a sentence in which case we should just wait for another
-    }
-    
-    if (millis() - timer > 2000) {
-      timer = millis(); // reset the timer
-      ledState = !ledState; // flip LED
-      digitalWrite(LED_BUILTIN, ledState);
-    }
-  }
-
-  // Get year, month, and day for filename
-  sprintf(filename, "YYMMDD%02d.csv", filenum); //GPS.year, GPS.month, GPS.day, 
-  
-  // Check for existence of filename with current filenum
-  while (SD.exists(filename)) {
-    filenum++;
-    sprintf(filename, "YYMMDD%02d.csv", filenum); //GPS.year, GPS.month, GPS.day, 
-  }
-  
-  Serial.println(GPS.year);
-  Serial.println(filename);
 }
 
 void loop() {
@@ -121,33 +87,98 @@ void loop() {
   ledState = !ledState;
   digitalWrite(LED_BUILTIN, ledState);   // turn the LED on (HIGH is the voltage level)
 
-  Serial.print(filename);
-  Serial.print("Co2 ppm = ");
+  // read data from the GPS in the 'main loop'
+  char c = GPS.read();
+  // if a sentence is received, we can check the checksum, parse it...
+  if (GPS.newNMEAreceived()) {
+    // a tricky thing here is if we print the NMEA sentence, or data
+    // we end up not listening and catching other sentences!
+    // so be very wary if using OUTPUT_ALLDATA and trying to print out data
+    if (!GPS.parse(GPS.lastNMEA())) // this also sets the newNMEAreceived() flag to false
+      return; // we can fail to parse a sentence in which case we should just wait for another
+  }
 
-  // Poll sensor: UART K-30 comms
-//  sendRequest(readCO2);
-//  unsigned long valCO2 = getValue(response);
-//  Serial.print(valCO2);
-  Serial.print(", seconds elapsed = ");
-  Serial.println(millis()/1000);
-//
-  // Create filename
-  // Open the file: SPI SD comms
-  File dataFile = SD.open(filename, FILE_WRITE);
+  // approximately every 2 seconds or so, print out the current stats
+  if (millis() - timer > 2000) {
+    timer = millis(); // reset the timer
+    Serial.print("\nTime: ");
+    if (GPS.hour < 10) { Serial.print('0'); }
+    Serial.print(GPS.hour, DEC); Serial.print(':');
+    if (GPS.minute < 10) { Serial.print('0'); }
+    Serial.print(GPS.minute, DEC); Serial.print(':');
+    if (GPS.seconds < 10) { Serial.print('0'); }
+    Serial.print(GPS.seconds, DEC); Serial.print('.');
+    if (GPS.milliseconds < 10) {
+      Serial.print("00");
+    } else if (GPS.milliseconds > 9 && GPS.milliseconds < 100) {
+      Serial.print("0");
+    }
+    Serial.println(GPS.milliseconds);
+    Serial.print("Date: ");
+    Serial.print(GPS.month, DEC); Serial.print('/');
+    Serial.print(GPS.day, DEC); 
+    Serial.print("/20");
+    Serial.println(GPS.year, DEC);
+    Serial.print("Fix: "); Serial.print((int)GPS.fix);
+    Serial.print(" quality: "); Serial.println((int)GPS.fixquality);
+    if (GPS.fix) {
+      // Blink to let us know you're alive
+      ledState = !ledState;
+      digitalWrite(LED_BUILTIN, ledState);   // turn the LED on (HIGH is the voltage level)
+      
+      Serial.print("Location: ");
+      Serial.print(GPS.latitude, 4); Serial.print(GPS.lat);
+      Serial.print(", ");
+      Serial.print(GPS.longitude, 4); Serial.println(GPS.lon);
+      Serial.print("Speed (knots): "); Serial.println(GPS.speed);
+      Serial.print("Angle: "); Serial.println(GPS.angle);
+      Serial.print("Altitude: "); Serial.println(GPS.altitude);
+      Serial.print("Satellites: "); Serial.println((int)GPS.satellites);
+
+      if(!filenameCreated){
+        // Get year, month, and day for filename
+        int filenum = 0; // start at zero and increment by one if file exists
+        sprintf(filename, "%02i%02i%02i%02d.csv", GPS.year, GPS.month, GPS.day, filenum); 
+        
+        // Check for existence of filename with current filenum
+        while (SD.exists(filename)) {
+          filenum++;
+          sprintf(filename, "%02i%02i%02i%02d.csv", GPS.year, GPS.month, GPS.day, filenum); 
+        }
+        filenameCreated = true;
+      }
+      
+    }
+
+    Serial.print(filename);
+    Serial.println(" Co2 ppm = ");
+  
+    // Poll sensor: UART K-30 comms
+  //  sendRequest(readCO2);
+  //  unsigned long valCO2 = getValue(response);
+  //  Serial.print(valCO2);
+    Serial.print(", seconds elapsed = ");
+    Serial.println(millis()/1000);
     
-  // if the file is available, write to it:
-  if (dataFile) {
-    dataFile.print(millis()/1000);
-    dataFile.print(",");
-//    dataFile.println(valCO2);
-    dataFile.close();
-  }
-  // if the file isn't open, pop up an error:
-  else {
-    Serial.println("error opening datalog.txt");
+    // Create filename
+    // Open the file: SPI SD comms
+    File dataFile = SD.open(filename, FILE_WRITE);
+      
+    // if the file is available, write to it:
+    if (dataFile) {
+      dataFile.print(millis()/1000);
+      dataFile.print(",");
+  //    dataFile.println(valCO2);
+      dataFile.close();
+    }
+    // if the file isn't open, pop up an error:
+    else {
+      Serial.println("error opening datalog.txt");
+    }
   }
 
-  delay(2000);
+  
+
 }
 
 void sendRequest(byte packet[]){
