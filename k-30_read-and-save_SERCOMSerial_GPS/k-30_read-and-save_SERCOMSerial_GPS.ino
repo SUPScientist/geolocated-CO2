@@ -19,7 +19,7 @@
 // SD card settings
 #define chipSelect 4 
 File myFile;
-char filename[] = "YYMMDD00.CSV"; // template filename (year, month, day, 00–99 file number for that day)
+char filename[] = "YYMMDD00.csv"; // template filename (year, month, day, 00–99 file number for that day)
 int filenum = 0; // start at zero and increment by one if file exists
 bool ledState = false;
 
@@ -30,12 +30,9 @@ int valMultiplier = 1; //multiplier for value. default is 1. set to 3 for K-30 3
 
 // GPS
 #include <Adafruit_GPS.h>
-
-// what's the name of the hardware serial port?
 #define GPSSerial Serial1
-
-// Connect to the GPS on the hardware port
 Adafruit_GPS GPS(&GPSSerial);
+uint32_t timer = millis();
 
 // Add a second hardware UART
 // https://learn.adafruit.com/using-atsamd21-sercom-to-add-more-spi-i2c-serial-ports/creating-a-new-serial
@@ -51,9 +48,14 @@ void setup() {
   Serial2.begin(9600); //Opens the virtual serial port with a baud of 9600
   pinMode(LED_BUILTIN, OUTPUT);
   
-  delay(2000); // give serial monitor time to open and establish comms.
+  delay(3000); // give serial monitor time to open and establish comms.
   Serial.println(" Demo of AN-126 Software Serial and K-40 Sensor");
 
+  // For K30
+  // Assign pins 10 & 11 SERCOM functionality for 2nd UART
+  pinPeripheral(10, PIO_SERCOM);
+  pinPeripheral(11, PIO_SERCOM);
+  
   // Set up GPS
   GPS.begin(9600);
   // uncomment this line to turn on RMC (recommended minimum) and GGA (fix data) including altitude
@@ -82,13 +84,9 @@ void setup() {
   char c = GPS.read();
   
   while(!GPS.fix) {
-    ledState = !ledState;
-    digitalWrite(LED_BUILTIN, ledState);   // turn the LED on (HIGH is the voltage level)
-    Serial.println("No fix");
-    delay(500); 
-    
-    GPS.read();
-      // if a sentence is received, we can check the checksum, parse it...
+    // read data from the GPS
+    char c = GPS.read();
+    // if a sentence is received, we can check the checksum, parse it...
     if (GPS.newNMEAreceived()) {
       // a tricky thing here is if we print the NMEA sentence, or data
       // we end up not listening and catching other sentences!
@@ -97,22 +95,25 @@ void setup() {
       if (!GPS.parse(GPS.lastNMEA())) // this also sets the newNMEAreceived() flag to false
         return; // we can fail to parse a sentence in which case we should just wait for another
     }
+    
+    if (millis() - timer > 2000) {
+      timer = millis(); // reset the timer
+      ledState = !ledState; // flip LED
+      digitalWrite(LED_BUILTIN, ledState);
+    }
   }
 
   // Get year, month, and day for filename
-  sprintf(filename, "%02d%02d%02d%02d.csv", GPS.year, GPS.month, GPS.day, filenum);
+  sprintf(filename, "YYMMDD%02d.csv", filenum); //GPS.year, GPS.month, GPS.day, 
   
   // Check for existence of filename with current filenum
   while (SD.exists(filename)) {
     filenum++;
-    sprintf(filename, "%02d%02d%02d%02d.csv", GPS.year, GPS.month, GPS.day, filenum);
+    sprintf(filename, "YYMMDD%02d.csv", filenum); //GPS.year, GPS.month, GPS.day, 
   }
-
   
-  // Assign pins 10 & 11 SERCOM functionality for 2nd UART
-  pinPeripheral(10, PIO_SERCOM);
-  pinPeripheral(11, PIO_SERCOM);
-
+  Serial.println(GPS.year);
+  Serial.println(filename);
 }
 
 void loop() {
@@ -120,30 +121,31 @@ void loop() {
   ledState = !ledState;
   digitalWrite(LED_BUILTIN, ledState);   // turn the LED on (HIGH is the voltage level)
 
-//  Serial.print("Co2 ppm = ");
-//
-//  // Poll sensor: UART K-30 comms
+  Serial.print(filename);
+  Serial.print("Co2 ppm = ");
+
+  // Poll sensor: UART K-30 comms
 //  sendRequest(readCO2);
 //  unsigned long valCO2 = getValue(response);
 //  Serial.print(valCO2);
-//  Serial.print(", seconds elapsed = ");
-//  Serial.println(millis()/1000);
+  Serial.print(", seconds elapsed = ");
+  Serial.println(millis()/1000);
 //
-//  // Create filename
-//  // Open the file: SPI SD comms
-//  File dataFile = SD.open(filename, FILE_WRITE);
-//    
-//  // if the file is available, write to it:
-//  if (dataFile) {
-//    dataFile.print(millis()/1000);
-//    dataFile.print(",");
+  // Create filename
+  // Open the file: SPI SD comms
+  File dataFile = SD.open(filename, FILE_WRITE);
+    
+  // if the file is available, write to it:
+  if (dataFile) {
+    dataFile.print(millis()/1000);
+    dataFile.print(",");
 //    dataFile.println(valCO2);
-//    dataFile.close();
-//  }
-//  // if the file isn't open, pop up an error:
-//  else {
-//    Serial.println("error opening datalog.txt");
-//  }
+    dataFile.close();
+  }
+  // if the file isn't open, pop up an error:
+  else {
+    Serial.println("error opening datalog.txt");
+  }
 
   delay(2000);
 }
