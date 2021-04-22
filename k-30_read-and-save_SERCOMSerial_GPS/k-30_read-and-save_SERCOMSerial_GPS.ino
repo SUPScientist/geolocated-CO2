@@ -1,5 +1,3 @@
-// AN-126 Demo of K-30 
-
 /*
  K-Series sensor
  
@@ -83,10 +81,6 @@ void setup() {
 }
 
 void loop() {
-  // Blink to let us know you're alive
-  ledState = !ledState;
-  digitalWrite(LED_BUILTIN, ledState);   // turn the LED on (HIGH is the voltage level)
-
   // read data from the GPS in the 'main loop'
   char c = GPS.read();
   // if a sentence is received, we can check the checksum, parse it...
@@ -101,6 +95,7 @@ void loop() {
   // approximately every 2 seconds or so, print out the current stats
   if (millis() - timer > 2000) {
     timer = millis(); // reset the timer
+
     Serial.print("\nTime: ");
     if (GPS.hour < 10) { Serial.print('0'); }
     Serial.print(GPS.hour, DEC); Serial.print(':');
@@ -121,6 +116,8 @@ void loop() {
     Serial.println(GPS.year, DEC);
     Serial.print("Fix: "); Serial.print((int)GPS.fix);
     Serial.print(" quality: "); Serial.println((int)GPS.fixquality);
+
+    // If GPS gets a fix, print out and save good data
     if (GPS.fix) {
       // Blink to let us know you're alive
       ledState = !ledState;
@@ -147,10 +144,7 @@ void loop() {
         }
         filenameCreated = true;
       }
-      
-    }
-
-    Serial.println(filename);
+      Serial.println(filename);
     Serial.print(" Co2 ppm = ");
   
     // Poll sensor: UART K-30 comms
@@ -166,8 +160,38 @@ void loop() {
       
     // if the file is available, write to it:
     if (dataFile) {
+      // Date
+      dataFile.print(GPS.month, DEC); 
+      dataFile.print('/');
+      dataFile.print(GPS.day, DEC); 
+      dataFile.print("/20");
+      dataFile.print(GPS.year, DEC);
+      dataFile.print(",");
+
+      // Time
+      dataFile.print(GPS.hour, DEC); 
+      dataFile.print(':');
+      if (GPS.minute < 10) { dataFile.print('0'); }
+      dataFile.print(GPS.minute, DEC); dataFile.print(':');
+      if (GPS.seconds < 10) { dataFile.print('0'); }
+      dataFile.print(GPS.seconds, DEC);
+      dataFile.print(",");
+
+      // Elapsed Time
       dataFile.print(millis()/1000);
       dataFile.print(",");
+
+      // Location
+      dataFile.print(GPS.latitude, 4); 
+      dataFile.print(",");
+      dataFile.print(GPS.lat); // N or S
+      dataFile.print(",");
+      dataFile.print(GPS.longitude, 4); 
+      dataFile.print(",");
+      dataFile.print(GPS.lon); // E or W
+      dataFile.print(",");
+
+      // CO2
       dataFile.println(valCO2);
       dataFile.close();
     }
@@ -175,6 +199,8 @@ void loop() {
     else {
       Serial.println("error opening datalog.txt");
     }
+    }
+
   }
 
   
