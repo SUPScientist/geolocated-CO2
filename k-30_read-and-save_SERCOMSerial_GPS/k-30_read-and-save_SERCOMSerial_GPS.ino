@@ -8,6 +8,8 @@
  UNCW
 
  GPS and SD code, as well as modification to enable a second hardware serial line, comes from Adafruit
+
+ TODO: add altitude to saved params
 */
 
 #include <SPI.h>
